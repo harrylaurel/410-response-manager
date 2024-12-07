@@ -1,0 +1,11 @@
+url_pattern,is_regex
+/old-product,0
+/discontinued-items/2023,0
+^/products/deprecated/.*,1
+^/legacy-content/\d{4}/.*,1
+/removed-section,0
+/archive/2020/.*,1
+/outdated-docs/v1,0
+^/beta/.*,1
+/old-api/v1/.+,1
+/temp-landing-page,0
