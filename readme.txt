@@ -1,6 +1,6 @@
 === 410 Response Manager ===
 Contributors: harrylaurel
-Donate link: https://rathly.com/donate
+Donate link: https://rathly.com/plugins/410-response-manager/
 Tags: seo, url-management, http-status, redirect, gone
 Requires at least: 5.6
 Tested up to: 6.7
@@ -106,8 +106,8 @@ Initial release of 410 Response Manager
 
 == Additional Information ==
 
-* For support, visit: https://rathly.com/support
-* Documentation: https://rathly.com/docs/410-response-manager
+* For support, visit: https://rathly.com/contact-us/
+* Documentation: https://rathly.com/plugins/410-response-manager/
 * GitHub repository: https://github.com/harrylaurel/410-response-manager
 
 The plugin is actively maintained and tested with the latest versions of WordPress and PHP.
