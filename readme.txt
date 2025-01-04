@@ -1,11 +1,11 @@
 === 410 Response Manager ===
-Contributors: harrylaurel
-Donate link: https://rathly.com/plugins/410-response-manager/
+Contributors: rathly
+Donate link: https://rathly.com/wordpress-plugins/410-response-manager/
 Tags: seo, url-management, http-status, redirect, gone
 Requires at least: 5.6
-Tested up to: 6.7
+Tested up to: 6.7.1
 Stable tag: 1.0.0
-Requires PHP: 7.2
+Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -22,6 +22,7 @@ Efficiently manage HTTP 410 (Gone) responses with manual entries, regex patterns
 * Bulk CSV import/export functionality
 * Option to convert 404s to 410s automatically
 * Custom, SEO-friendly 410 error page
+* Secure data handling and validation
 
 = Use Cases =
 
@@ -69,13 +70,13 @@ Yes! Enable the "Use as Regular Expression" option when adding URL patterns. Thi
 
 Yes, the plugin implements WordPress caching for optimal performance. URL patterns are cached and only refreshed when necessary.
 
-== Screenshots ==
+== Security ==
 
-1. Main admin interface
-2. URL pattern management screen
-3. CSV import interface
-4. Settings configuration
-5. Custom 410 error page
+* All data is properly sanitized and validated
+* Nonce verification on all forms and AJAX requests
+* User capability checks for administrative actions
+* Safe CSV handling with proper file validation
+* Secure database operations with prepared statements
 
 == Changelog ==
 
@@ -106,8 +107,8 @@ Initial release of 410 Response Manager
 
 == Additional Information ==
 
-* For support, visit: https://rathly.com/contact-us/
-* Documentation: https://rathly.com/plugins/410-response-manager/
-* GitHub repository: https://github.com/harrylaurel/410-response-manager
+* For support, visit: [Rathly Contact](https://rathly.com/contact-us/)
+* Documentation: [Plugin Documentation](https://rathly.com/wordpress-plugins/410-response-manager/)
+* GitHub repository: [GitHub](https://github.com/rathly/410-response-manager)
 
 The plugin is actively maintained and tested with the latest versions of WordPress and PHP.
