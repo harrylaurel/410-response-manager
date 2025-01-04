@@ -1,0 +1,313 @@
+/**
+ * Admin styles for 410 Response Manager
+ *
+ * @package 410-response-manager
+ * @author Rathly
+ * @copyright 2024 Rathly
+ */
+
+/* Base Styles
+--------------------------------------------- */
+.wrap {
+    margin: 10px 20px 0 2px;
+}
+
+.wrap h1 {
+    margin-bottom: 15px;
+}
+
+/* Tab Navigation
+--------------------------------------------- */
+.nav-tab-wrapper {
+    margin-bottom: 15px;
+    padding-bottom: 0;
+    border-bottom: 1px solid #c3c4c7;
+}
+
+.nav-tab {
+    margin: 0 3px -1px 0;
+    padding: 8px 12px;
+    border: 1px solid #c3c4c7;
+    border-bottom: none;
+    background: #f0f0f1;
+    color: #50575e;
+    font-size: 14px;
+    line-height: 1.71428571;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.nav-tab:hover,
+.nav-tab:focus {
+    background: #fff;
+    color: #1d2327;
+}
+
+.nav-tab-active,
+.nav-tab-active:hover,
+.nav-tab-active:focus {
+    background: #fff;
+    color: #1d2327;
+    border-bottom: 1px solid #fff;
+}
+
+/* Content Areas
+--------------------------------------------- */
+.tab-content {
+    margin-top: 15px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+    border-radius: 2px;
+}
+
+.tab-content:not(:first-of-type) {
+    display: none;
+}
+
+/* Form Elements
+--------------------------------------------- */
+.form-table {
+    margin-top: 0;
+}
+
+.form-table th {
+    padding: 20px 10px 20px 0;
+    width: 200px;
+    vertical-align: top;
+}
+
+.form-table td {
+    padding: 15px 10px;
+    vertical-align: top;
+}
+
+.form-table input[type="text"] {
+    width: 100%;
+    max-width: 400px;
+}
+
+.form-table .description {
+    margin-top: 5px;
+    color: #646970;
+    font-style: italic;
+}
+
+/* URL List Table
+--------------------------------------------- */
+.wp-list-table {
+    border-spacing: 0;
+    width: 100%;
+    clear: both;
+}
+
+.wp-list-table thead th,
+.wp-list-table tfoot th {
+    padding: 8px 10px;
+    line-height: 1.4;
+}
+
+.wp-list-table thead th {
+    border-bottom: 1px solid #c3c4c7;
+}
+
+.wp-list-table tfoot th {
+    border-top: 1px solid #c3c4c7;
+}
+
+.wp-list-table td {
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+.wp-list-table tr:nth-child(odd) {
+    background-color: #f6f7f7;
+}
+
+.column-cb {
+    width: 32px;
+    text-align: center;
+}
+
+.wp-list-table .delete-url {
+    color: #d63638;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.wp-list-table .delete-url:hover,
+.wp-list-table .delete-url:focus {
+    color: #8c1d1d;
+    text-decoration: underline;
+}
+
+/* Pattern Preview and Validation
+--------------------------------------------- */
+.pattern-preview {
+    margin-top: 10px;
+    padding: 12px;
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+}
+
+.pattern-preview h4 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: #1d2327;
+}
+
+.pattern-preview code {
+    display: block;
+    padding: 8px;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 2px;
+    font-family: Consolas, Monaco, monospace;
+    word-break: break-all;
+}
+
+.validation-error {
+    display: block;
+    margin-top: 8px;
+    color: #d63638;
+    font-size: 13px;
+}
+
+/* CSV Upload Section
+--------------------------------------------- */
+.csv-info {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f0f6fc;
+    border: 1px solid #c5d9ed;
+    border-radius: 3px;
+}
+
+/* Loading States
+--------------------------------------------- */
+.loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #f0f0f1;
+    border-top-color: #2271b1;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Bulk Actions
+--------------------------------------------- */
+.bulkactions {
+    margin: 8px 0;
+    padding: 8px 0;
+}
+
+.bulkactions select {
+    margin-right: 8px;
+    min-width: 200px;
+}
+
+/* Accessibility Improvements
+--------------------------------------------- */
+.screen-reader-text:focus {
+    clip: auto !important;
+    clip-path: none !important;
+    height: auto;
+    width: auto;
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 15px 23px 14px;
+    min-width: auto;
+    background-color: #f0f0f1;
+    color: #0073aa;
+    border-radius: 3px;
+    box-shadow: 0 0 2px 2px rgba(0, 0, 0, 0.6);
+    white-space: normal;
+}
+
+input[type="checkbox"]:focus,
+select:focus,
+a:focus {
+    outline: 2px solid #2271b1;
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
+/* Responsive Design
+--------------------------------------------- */
+@media screen and (max-width: 782px) {
+    .form-table td input[type="text"] {
+        display: block;
+        width: 100%;
+        max-width: none;
+        font-size: 16px;
+    }
+    
+    .wp-list-table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .nav-tab-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        border-bottom: none;
+    }
+    
+    .nav-tab {
+        flex: 1 1 auto;
+        margin: 0;
+        text-align: center;
+        min-width: 120px;
+    }
+    
+    .bulkactions select {
+        display: block;
+        width: 100%;
+        max-width: none;
+        margin-bottom: 8px;
+    }
+    
+    .column-cb {
+        width: 40px;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .wrap {
+        margin: 10px 10px 0 0;
+    }
+    
+    .tab-content {
+        padding: 15px;
+    }
+    
+    .form-table th {
+        padding-bottom: 0;
+    }
+    
+    .form-table td {
+        padding-left: 0;
+        padding-right: 0;
+    }
+}
