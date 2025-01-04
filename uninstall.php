@@ -5,7 +5,7 @@
  * This file runs when the plugin is uninstalled to clean up the database.
  *
  * @package 410-response-manager
- * @author Harry Laurel
+ * @author Rathly
  * @copyright 2024 Rathly
  */
 
@@ -14,45 +14,62 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
-// Clear all plugin caches
+global $wpdb;
+
+// Clear plugin caches
 $cache_keys = array(
-    '410_entries_list',
-    '410_exact_matches',
-    '410_regex_patterns',
-    '410_url_patterns'
+    'rathly_410_url_patterns',
+    'rathly_410_exact_matches',
+    'rathly_410_regex_patterns',
+    'rathly_410_table_exists'
 );
 
-$cache_group = '410_response_manager';
+$cache_group = 'rathly_410_manager';
 
 foreach ($cache_keys as $key) {
     wp_cache_delete($key, $cache_group);
 }
 
-global $wpdb;
+// Get table name
+$table_name = $wpdb->prefix . 'rathly_410_urls';
 
-// Check if table exists
-$table_exists = $wpdb->get_var(
-    $wpdb->prepare(
-        "SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s",
-        DB_NAME,
-        $wpdb->prefix . '410_urls'
-    )
-);
+// Check if table exists using cache first
+$cache_key = 'rathly_410_table_exists';
+$table_exists = wp_cache_get($cache_key, $cache_group);
+
+if (false === $table_exists) {
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Required for uninstall
+    $table_exists = $wpdb->get_var(
+        $wpdb->prepare(
+            'SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s',
+            DB_NAME,
+            $table_name
+        )
+    );
+    
+    // Cache the result for future use
+    wp_cache_set($cache_key, $table_exists, $cache_group, HOUR_IN_SECONDS);
+}
 
 if ($table_exists) {
-    // Remove table data first
-    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Cleanup on uninstall
-    $wpdb->query("TRUNCATE TABLE {$wpdb->prefix}410_urls");
-    
-    // Drop the table
-    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Cleanup on uninstall
-    $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}410_urls");
+    // First, remove all data
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Required for uninstall
+    $wpdb->query(
+        $wpdb->prepare(
+            'DELETE FROM ' . $wpdb->prefix . 'rathly_410_urls WHERE 1 = %d',
+            1
+        )
+    );
+
+    // Then drop the table
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Required for uninstall
+    $wpdb->query('DROP TABLE IF EXISTS ' . $wpdb->prefix . 'rathly_410_urls');
 }
 
 // Delete plugin options
 $options_to_delete = array(
-    '410_response_manager_version',
-    '410_response_manager_settings'
+    'rathly_410_manager_version',
+    'rathly_410_manager_settings'
 );
 
 foreach ($options_to_delete as $option) {
