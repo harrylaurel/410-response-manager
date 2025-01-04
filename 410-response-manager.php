@@ -1,20 +1,20 @@
 <?php
 /**
  * Plugin Name: 410 Response Manager
- * Plugin URI: https://rathly.com/plugins/410-response-manager/
+ * Plugin URI: https://rathly.com/wordpress-plugins/410-response-manager/
  * Description: Manage 410 Gone responses with manual entries, regex patterns, and CSV import functionality.
  * Version: 1.0.0
  * Requires at least: 5.6
- * Requires PHP: 7.2
- * Author: Harry Laurel
- * Author URI: https://rathly.com/about-us/harrylaurel/
+ * Requires PHP: 7.4
+ * Author: Rathly
+ * Author URI: https://rathly.com/services/web-design/
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: 410-response-manager
  * Domain Path: /languages
  *
  * @package 410-response-manager
- * @author Harry Laurel
+ * @author Rathly
  * @copyright 2024 Rathly
  */
 
@@ -23,7 +23,15 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class Response_410_Manager {
+/**
+ * Define plugin constants
+ */
+define('RATHLY_410_VERSION', '1.0.0');
+define('RATHLY_410_FILE', __FILE__);
+define('RATHLY_410_PATH', plugin_dir_path(__FILE__));
+define('RATHLY_410_URL', plugin_dir_url(__FILE__));
+
+class RathlyResponse410Manager {
     /**
      * Instance of this class.
      *
@@ -36,7 +44,7 @@ class Response_410_Manager {
      *
      * @var string
      */
-    private $version = '1.0.0';
+    private $version;
 
     /**
      * WP Filesystem instance.
@@ -50,7 +58,14 @@ class Response_410_Manager {
      *
      * @var string
      */
-    private $cache_group = '410_response_manager';
+    private $cache_group = 'rathly_410_manager';
+
+    /**
+     * Table name.
+     *
+     * @var string
+     */
+    private $table_name;
 
     /**
      * Get instance of this class.
@@ -68,38 +83,61 @@ class Response_410_Manager {
      * Constructor.
      */
     private function __construct() {
+        global $wpdb;
+        $this->version = RATHLY_410_VERSION;
+        $this->table_name = $wpdb->prefix . 'rathly_410_urls';
+        
         // Initialize WP_Filesystem
         require_once ABSPATH . 'wp-admin/includes/file.php';
         WP_Filesystem();
         global $wp_filesystem;
         $this->fs = $wp_filesystem;
         
-        // Create languages directory
-        $langs_dir = plugin_dir_path(__FILE__) . 'languages';
-        if (!file_exists($langs_dir)) {
-            wp_mkdir_p($langs_dir);
-        }
-        
         // Initialize hooks
-        add_action('plugins_loaded', array($this, 'load_textdomain'));
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'register_settings'));
         add_action('template_redirect', array($this, 'check_410_status'), 1);
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
-        add_action('wp_ajax_delete_410_url', array($this, 'handle_ajax_delete'));
-        add_action('wp_ajax_bulk_410_action', array($this, 'handle_bulk_action'));
+        add_action('wp_ajax_rathly_delete_410_url', array($this, 'handle_ajax_delete'));
+        add_action('wp_ajax_rathly_bulk_410_action', array($this, 'handle_bulk_action'));
         
-        register_activation_hook(__FILE__, array($this, 'activate_plugin'));
+        register_activation_hook(RATHLY_410_FILE, array($this, 'activate_plugin'));
+        register_deactivation_hook(RATHLY_410_FILE, array($this, 'deactivate_plugin'));
     }
 
     /**
-     * Load plugin textdomain.
+     * Register plugin settings.
      */
-    public function load_textdomain() {
-        load_plugin_textdomain(
-            '410-response-manager',
-            false,
-            dirname(plugin_basename(__FILE__)) . '/languages'
+    public function register_settings() {
+        register_setting(
+            'rathly_410_manager_settings', 
+            'rathly_410_manager_settings',
+            array(
+                'type' => 'array',
+                'sanitize_callback' => array($this, 'sanitize_settings'),
+                'default' => array(
+                    'convert_404_to_410' => false
+                ),
+                'show_in_rest' => false
+            )
+        );
+    }
+
+    /**
+     * Sanitize settings.
+     *
+     * @param array $input Input array to sanitize.
+     * @return array
+     */
+    public function sanitize_settings($input) {
+        if (!is_array($input)) {
+            return array(
+                'convert_404_to_410' => false
+            );
+        }
+
+        return array(
+            'convert_404_to_410' => !empty($input['convert_404_to_410'])
         );
     }
 
@@ -107,10 +145,10 @@ class Response_410_Manager {
      * Activate plugin.
      */
     public function activate_plugin() {
-        $this->create_table();
+        $this->create_database_table();
         
-        add_option('410_response_manager_version', $this->version);
-        add_option('410_response_manager_settings', array(
+        add_option('rathly_410_manager_version', $this->version);
+        add_option('rathly_410_manager_settings', array(
             'convert_404_to_410' => false
         ));
         
@@ -118,23 +156,60 @@ class Response_410_Manager {
     }
 
     /**
-     * Create plugin table.
+     * Deactivate plugin.
      */
-    private function create_table() {
+    public function deactivate_plugin() {
+        $this->clear_all_cache();
+        flush_rewrite_rules();
+    }
+
+    /**
+     * Create database table.
+     */
+    private function create_database_table() {
         global $wpdb;
-        $charset_collate = $wpdb->get_charset_collate();
         
-        $sql = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}410_urls (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            url_pattern varchar(255) NOT NULL,
-            is_regex tinyint(1) DEFAULT 0,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            KEY url_pattern (url_pattern)
-        ) $charset_collate";
-        
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        dbDelta($sql);
+        $table_exists = $this->check_table_exists();
+
+        if (!$table_exists) {
+            $charset_collate = $wpdb->get_charset_collate();
+            $sql = "CREATE TABLE IF NOT EXISTS " . $wpdb->prefix . "rathly_410_urls (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                url_pattern varchar(255) NOT NULL,
+                is_regex tinyint(1) NOT NULL DEFAULT '0',
+                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY  (id),
+                KEY url_pattern (url_pattern)
+            ) $charset_collate;";
+
+            require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+            dbDelta($sql);
+        }
+    }
+
+    /**
+     * Check if table exists.
+     *
+     * @return bool
+     */
+    private function check_table_exists() {
+        global $wpdb;
+        $cache_key = 'rathly_410_table_exists';
+        $table_exists = wp_cache_get($cache_key, $this->cache_group);
+
+        if (false === $table_exists) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Using WordPress caching
+            $table_exists = $wpdb->get_var(
+                $wpdb->prepare(
+                    'SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s',
+                    DB_NAME,
+                    $wpdb->prefix . 'rathly_410_urls'
+                )
+            );
+            wp_cache_set($cache_key, $table_exists, $this->cache_group, HOUR_IN_SECONDS);
+        }
+
+        return (bool) $table_exists;
     }
 
     /**
@@ -145,17 +220,10 @@ class Response_410_Manager {
             esc_html__('410 Response Manager', '410-response-manager'),
             esc_html__('410 Manager', '410-response-manager'),
             'manage_options',
-            '410-manager',
+            'rathly-410-manager',
             array($this, 'render_admin_page'),
             'dashicons-dismiss'
         );
-    }
-
-    /**
-     * Register plugin settings.
-     */
-    public function register_settings() {
-        register_setting('410_response_manager_settings', '410_response_manager_settings');
     }
 
     /**
@@ -164,29 +232,47 @@ class Response_410_Manager {
      * @param string $hook The current admin page.
      */
     public function enqueue_admin_assets($hook) {
-        if ('toplevel_page_410-manager' !== $hook) {
+        if ('toplevel_page_rathly-410-manager' !== $hook) {
             return;
         }
         
         wp_enqueue_style(
-            '410-response-manager-style',
-            plugins_url('css/admin-style.css', __FILE__),
+            'rathly-410-manager-style',
+            RATHLY_410_URL . 'css/admin-style.css',
             array(),
             $this->version
         );
         
         wp_enqueue_script(
-            '410-response-manager-script',
-            plugins_url('js/admin-script.js', __FILE__),
+            'rathly-410-manager-script',
+            RATHLY_410_URL . 'js/admin-script.js',
             array('jquery'),
             $this->version,
             true
         );
         
-        wp_localize_script('410-response-manager-script', 'response410Ajax', array(
+        wp_localize_script('rathly-410-manager-script', 'rathly410Ajax', $this->get_localized_data());
+    }
+
+    /**
+     * Get localized data for JavaScript.
+     *
+     * @return array
+     */
+    private function get_localized_data() {
+        return array(
             'ajaxurl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('410_response_manager_nonce')
-        ));
+            'nonce' => wp_create_nonce('rathly_410_manager_nonce'),
+            'confirmDelete' => esc_html__('Are you sure you want to delete this URL pattern?', '410-response-manager'),
+            'confirmBulkDelete' => esc_html__('Are you sure you want to delete these URL patterns?', '410-response-manager'),
+            'networkError' => esc_html__('Network error occurred. Please try again.', '410-response-manager'),
+            'invalidRegex' => esc_html__('Invalid regular expression: ', '410-response-manager'),
+            'invalidFile' => esc_html__('Please select a valid CSV file', '410-response-manager'),
+            'fileSizeLimit' => esc_html__('File size exceeds 5MB limit', '410-response-manager'),
+            'selectAction' => esc_html__('Please select an action', '410-response-manager'),
+            'selectItems' => esc_html__('Please select at least one URL pattern', '410-response-manager'),
+            'noPatterns' => esc_html__('No URL patterns found.', '410-response-manager')
+        );
     }
 
     /**
@@ -197,34 +283,37 @@ class Response_410_Manager {
             return;
         }
 
-        // Sanitize and validate request URI
         $request_uri = esc_url_raw(wp_unslash($_SERVER['REQUEST_URI']));
         $current_path = wp_parse_url($request_uri, PHP_URL_PATH);
-        $current_path = sanitize_text_field($current_path);
-        
-        // Check cache
-        $cache_key = '410_path_' . md5($current_path);
-        $is_410 = wp_cache_get($cache_key, $this->cache_group);
-        
-        if (false === $is_410) {
-            $is_410 = $this->check_url_pattern($current_path);
-            wp_cache_set($cache_key, $is_410, $this->cache_group, 3600);
+        if (empty($current_path)) {
+            return;
         }
+
+        $current_path = sanitize_text_field($current_path);
+        $cache_key = 'rathly_410_path_' . md5($current_path);
+        $cached_result = wp_cache_get($cache_key, $this->cache_group);
+        
+        if (false !== $cached_result) {
+            if ($cached_result) {
+                $this->send_410_response();
+            }
+            return;
+        }
+
+        $is_410 = $this->check_url_pattern($current_path);
+        wp_cache_set($cache_key, $is_410, $this->cache_group, HOUR_IN_SECONDS);
         
         if ($is_410) {
             $this->send_410_response();
             return;
         }
         
-        // Check 404 conversion setting
-        if (is_404()) {
-            $settings = get_option('410_response_manager_settings', array());
-            if (!empty($settings['convert_404_to_410'])) {
-                $this->send_410_response();
-            }
+        $settings = get_option('rathly_410_manager_settings', array());
+        if (is_404() && !empty($settings['convert_404_to_410'])) {
+            $this->send_410_response();
         }
     }
-    
+
     /**
      * Check if URL matches any patterns.
      *
@@ -232,141 +321,130 @@ class Response_410_Manager {
      * @return bool
      */
     private function check_url_pattern($current_path) {
-        global $wpdb;
+        $patterns = $this->get_url_patterns();
         
-        // Check exact matches from cache
-        $cache_key = '410_exact_matches';
-        $exact_match = wp_cache_get($cache_key, $this->cache_group);
-        
-        if (false === $exact_match) {
-            $exact_match = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}410_urls WHERE url_pattern = %s AND is_regex = 0",
-                $current_path
-            ));
-            wp_cache_set($cache_key, $exact_match, $this->cache_group, 3600);
+        if (empty($patterns)) {
+            return false;
         }
-        
-        if ($exact_match) {
-            return true;
-        }
-        
-        // Check regex patterns from cache
-        $patterns_key = '410_regex_patterns';
-        $patterns = wp_cache_get($patterns_key, $this->cache_group);
-        
-        if (false === $patterns) {
-            $patterns = $wpdb->get_col($wpdb->prepare(
-                "SELECT url_pattern FROM {$wpdb->prefix}410_urls WHERE is_regex = %d",
-                1
-            ));
-            wp_cache_set($patterns_key, $patterns, $this->cache_group, 3600);
-        }
-        
+
         foreach ($patterns as $pattern) {
-            if (@preg_match('#' . str_replace('#', '\#', $pattern) . '#', $current_path)) {
+            if (!$pattern->is_regex && $pattern->url_pattern === $current_path) {
+                return true;
+            }
+            
+            if ($pattern->is_regex && @preg_match('#' . str_replace('#', '\#', $pattern->url_pattern) . '#', $current_path)) {
                 return true;
             }
         }
         
         return false;
     }
-    
+
     /**
-     * Send 410 response and use theme's 404 template.
-     */
-    private function send_410_response() {
-        // Set 410 Gone status code
-        status_header(410);
-        
-        // Set header for search engines
-        header('X-Robots-Tag: noindex');
-        
-        // Let WordPress handle everything
-        global $wp_query;
-        $wp_query->set_404();
-        status_header(410);
-        return;
-    }
-    
-    /**
-     * Render admin page.
-     */
-    public function render_admin_page() {
-        if (!current_user_can('manage_options')) {
-            return;
-        }
-        
-        // Process form submission
-        if (isset($_SERVER['REQUEST_METHOD'])) {
-            $nonce = isset($_POST['_wpnonce']) ? wp_unslash($_POST['_wpnonce']) : '';
-            $request_method = wp_unslash($_SERVER['REQUEST_METHOD']);
-            
-            if ('POST' === $request_method && !empty($nonce)) {
-                if (wp_verify_nonce($nonce, '410_response_manager_action')) {
-                    $this->handle_form_submission();
-                }
-            }
-        }
-        
-        $entries = $this->get_entries();
-        include(plugin_dir_path(__FILE__) . 'templates/admin-page.php');
-    }
-    
-    /**
-     * Get entries from database with caching.
+     * Get URL patterns from database.
      *
      * @return array
      */
-    private function get_entries() {
-        // Get entries from cache
-        $cache_key = '410_entries_list';
-        $entries = wp_cache_get($cache_key, $this->cache_group);
+    private function get_url_patterns() {
+        global $wpdb;
+        $cache_key = 'rathly_410_url_patterns';
+        $patterns = wp_cache_get($cache_key, $this->cache_group);
         
-        if (false === $entries) {
-            global $wpdb;
-            $entries = $wpdb->get_results(
-                "SELECT * FROM {$wpdb->prefix}410_urls ORDER BY created_at DESC"
+        if (false === $patterns) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Using WordPress caching
+            $patterns = $wpdb->get_results(
+                $wpdb->prepare(
+                    'SELECT * FROM ' . $wpdb->prefix . 'rathly_410_urls WHERE 1 = %d ORDER BY created_at DESC',
+                    1
+                )
             );
-            wp_cache_set($cache_key, $entries, $this->cache_group, 3600);
+            
+            if ($patterns) {
+                wp_cache_set($cache_key, $patterns, $this->cache_group, HOUR_IN_SECONDS);
+            }
         }
         
-        return $entries;
+        return $patterns ?: array();
     }
-    
+
     /**
-     * Handle form submission.
+     * Handle form submissions.
      */
-    private function handle_form_submission() {
-        $nonce = isset($_POST['_wpnonce']) ? wp_unslash($_POST['_wpnonce']) : '';
-        if (!wp_verify_nonce($nonce, '410_response_manager_action')) {
-            return;
+    public function handle_form_submission() {
+        if (!isset($_POST['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'rathly_410_manager_action')) {
+            wp_die(esc_html__('Security check failed', '410-response-manager'));
         }
-        
-        if (isset($_POST['add_url']) && isset($_POST['url_pattern'])) {
+
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Insufficient permissions', '410-response-manager'));
+        }
+
+        // Get form data with nonce verification
+        $post_data = wp_unslash($_POST);
+        if (!isset($post_data['_wpnonce']) || !wp_verify_nonce($post_data['_wpnonce'], 'rathly_410_manager_action')) {
+            wp_die(esc_html__('Security check failed', '410-response-manager'));
+        }
+
+        if (isset($post_data['add_url'])) {
             $this->handle_url_addition();
         } elseif (isset($_FILES['csv_file'])) {
             $this->handle_csv_upload();
         }
     }
-    
+
+    /**
+     * Get sanitized request parameter.
+     *
+     * @param string $param Parameter name.
+     * @param mixed  $default Default value.
+     * @return mixed
+     */
+    private function get_request_param($param, $default = '') {
+        if (!isset($_POST['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'rathly_410_manager_action')) {
+            return $default;
+        }
+
+        if (!isset($_POST[$param])) {
+            return $default;
+        }
+
+        $raw_value = wp_unslash($_POST[$param]);
+        
+        if (is_array($raw_value)) {
+            return array_map('sanitize_text_field', $raw_value);
+        }
+        
+        if (is_numeric($default)) {
+            return absint($raw_value);
+        }
+
+        return sanitize_text_field($raw_value);
+    }
+
     /**
      * Handle URL addition.
      */
     private function handle_url_addition() {
-        if (!current_user_can('manage_options')) {
+        if (!check_admin_referer('rathly_410_manager_action')) {
             return;
         }
 
-        $url_pattern = isset($_POST['url_pattern']) ? sanitize_text_field(wp_unslash($_POST['url_pattern'])) : '';
-        $is_regex = isset($_POST['is_regex']) ? 1 : 0;
+        $url_pattern = $this->get_request_param('url_pattern');
+        $is_regex = $this->get_request_param('is_regex', 0);
         
         if (empty($url_pattern)) {
+            add_settings_error(
+                'rathly_410_manager_messages',
+                'empty_pattern',
+                esc_html__('URL pattern cannot be empty', '410-response-manager'),
+                'error'
+            );
             return;
         }
-        
+
         if ($is_regex && !$this->is_valid_regex($url_pattern)) {
             add_settings_error(
-                '410_response_manager_messages',
+                'rathly_410_manager_messages',
                 'invalid_regex',
                 esc_html__('Invalid regular expression pattern', '410-response-manager'),
                 'error'
@@ -374,94 +452,129 @@ class Response_410_Manager {
             return;
         }
         
-        // Check for duplicates
-        $cache_key = '410_url_' . md5($url_pattern);
-        $exists = wp_cache_get($cache_key, $this->cache_group);
-        
-        if (false === $exists) {
-            global $wpdb;
-            $exists = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}410_urls WHERE url_pattern = %s",
-                $url_pattern
-            ));
-            wp_cache_set($cache_key, $exists, $this->cache_group, 3600);
-        }
-        
+        $exists = $this->pattern_exists($url_pattern);
         if ($exists) {
             add_settings_error(
-                '410_response_manager_messages',
+                'rathly_410_manager_messages',
                 'duplicate_pattern',
                 esc_html__('This URL pattern already exists', '410-response-manager'),
                 'error'
             );
             return;
         }
-        
-        // Add new pattern
-        global $wpdb;
-        $result = $wpdb->insert(
-            $wpdb->prefix . '410_urls',
-            array(
-                'url_pattern' => $url_pattern,
-                'is_regex' => $is_regex
-            ),
-            array('%s', '%d')
-        );
-        
+
+        $result = $this->add_pattern($url_pattern, $is_regex);
         if ($result) {
-            $this->clear_cache();
+            $this->clear_all_cache();
             add_settings_error(
-                '410_response_manager_messages',
+                'rathly_410_manager_messages',
                 'url_added',
                 esc_html__('URL pattern added successfully', '410-response-manager'),
                 'success'
             );
+        } else {
+            add_settings_error(
+                'rathly_410_manager_messages',
+                'insert_failed',
+                esc_html__('Failed to add URL pattern', '410-response-manager'),
+                'error'
+            );
         }
+    }
+
+    /**
+     * Check if pattern exists.
+     *
+     * @param string $pattern URL pattern to check.
+     * @return bool
+     */
+    private function pattern_exists($pattern) {
+        global $wpdb;
+        $cache_key = 'rathly_pattern_' . md5($pattern);
+        $exists = wp_cache_get($cache_key, $this->cache_group);
+
+        if (false === $exists) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Using WordPress caching
+            $exists = $wpdb->get_var(
+                $wpdb->prepare(
+                    'SELECT COUNT(*) FROM ' . $wpdb->prefix . 'rathly_410_urls WHERE url_pattern = %s',
+                    $pattern
+                )
+            );
+            wp_cache_set($cache_key, $exists, $this->cache_group, HOUR_IN_SECONDS);
+        }
+
+        return (bool) $exists;
+    }
+
+    /**
+     * Add new pattern.
+     *
+     * @param string $pattern URL pattern.
+     * @param int    $is_regex Whether pattern is regex.
+     * @return bool
+     */
+    private function add_pattern($pattern, $is_regex) {
+        global $wpdb;
+        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write operation
+        $result = $wpdb->insert(
+            $wpdb->prefix . 'rathly_410_urls',
+            array(
+                'url_pattern' => $pattern,
+                'is_regex' => $is_regex
+            ),
+            array('%s', '%d')
+        );
+
+        if ($result) {
+            $this->clear_all_cache();
+        }
+
+        return (bool) $result;
     }
 
     /**
      * Handle CSV upload.
      */
     private function handle_csv_upload() {
-        if (!isset($_FILES['csv_file']) || !current_user_can('manage_options')) {
+        if (!check_admin_referer('rathly_410_manager_action') || !current_user_can('manage_options')) {
             return;
         }
-        
-        $file = array_map('sanitize_text_field', wp_unslash($_FILES['csv_file']));
-        
-        // Basic validation
+
+        if (!isset($_FILES['csv_file']) || 
+            !is_array($_FILES['csv_file']) || 
+            empty($_FILES['csv_file']['tmp_name'])) {
+            wp_die(esc_html__('No file uploaded', '410-response-manager'));
+        }
+
+        $file = array(
+            'name'     => isset($_FILES['csv_file']['name']) ? sanitize_file_name(wp_unslash($_FILES['csv_file']['name'])) : '',
+            'type'     => isset($_FILES['csv_file']['type']) ? sanitize_mime_type(wp_unslash($_FILES['csv_file']['type'])) : '',
+            'tmp_name' => isset($_FILES['csv_file']['tmp_name']) ? sanitize_text_field(wp_unslash($_FILES['csv_file']['tmp_name'])) : '',
+            'error'    => isset($_FILES['csv_file']['error']) ? absint($_FILES['csv_file']['error']) : 0,
+            'size'     => isset($_FILES['csv_file']['size']) ? absint($_FILES['csv_file']['size']) : 0
+        );
+
+        // Validate file
+        $file_data = wp_check_filetype($file['name'], array('csv' => 'text/csv'));
+        if ($file_data['type'] !== 'text/csv') {
+            wp_die(esc_html__('Invalid file type. Please upload a CSV file.', '410-response-manager'));
+        }
+
+        if ($file['size'] > 5242880) {
+            wp_die(esc_html__('File size exceeds 5MB limit', '410-response-manager'));
+        }
+
         if ($file['error'] !== UPLOAD_ERR_OK) {
-            add_settings_error(
-                '410_response_manager_messages',
-                'file_upload',
-                esc_html__('Error uploading file', '410-response-manager'),
-                'error'
-            );
-            return;
+            wp_die(esc_html__('Error uploading file', '410-response-manager'));
         }
-        
-        if ($file['size'] > 5242880) { // 5MB limit
-            add_settings_error(
-                '410_response_manager_messages',
-                'file_size',
-                esc_html__('File size exceeds 5MB limit', '410-response-manager'),
-                'error'
-            );
-            return;
-        }
-        
-        // Read file content
+
         $content = $this->fs->get_contents($file['tmp_name']);
         if (false === $content) {
-            add_settings_error(
-                '410_response_manager_messages',
-                'file_read',
-                esc_html__('Error reading file', '410-response-manager'),
-                'error'
-            );
-            return;
+            wp_die(esc_html__('Error reading file', '410-response-manager'));
         }
-        
+
         $this->process_csv_content($content);
     }
 
@@ -477,6 +590,10 @@ class Response_410_Manager {
         
         $lines = explode("\n", $content);
         foreach ($lines as $line) {
+            if (empty(trim($line))) {
+                continue;
+            }
+
             $data = str_getcsv($line);
             if (!empty($data[0])) {
                 $url_pattern = sanitize_text_field($data[0]);
@@ -486,16 +603,13 @@ class Response_410_Manager {
                     $error_count++;
                     continue;
                 }
+
+                if ($this->pattern_exists($url_pattern)) {
+                    $error_count++;
+                    continue;
+                }
                 
-                $result = $wpdb->insert(
-                    $wpdb->prefix . '410_urls',
-                    array(
-                        'url_pattern' => $url_pattern,
-                        'is_regex' => $is_regex
-                    ),
-                    array('%s', '%d')
-                );
-                
+                $result = $this->add_pattern($url_pattern, $is_regex);
                 if ($result) {
                     $success_count++;
                 } else {
@@ -504,11 +618,9 @@ class Response_410_Manager {
             }
         }
         
-        $this->clear_cache();
-        
         if ($success_count > 0) {
             add_settings_error(
-                '410_response_manager_messages',
+                'rathly_410_manager_messages',
                 'csv_import',
                 sprintf(
                     /* translators: 1: Number of successful imports, 2: Number of failed imports */
@@ -520,7 +632,7 @@ class Response_410_Manager {
             );
         } else {
             add_settings_error(
-                '410_response_manager_messages',
+                'rathly_410_manager_messages',
                 'csv_import',
                 esc_html__('No URL patterns were imported', '410-response-manager'),
                 'error'
@@ -532,12 +644,7 @@ class Response_410_Manager {
      * Handle AJAX delete request.
      */
     public function handle_ajax_delete() {
-        $nonce = isset($_POST['nonce']) ? wp_unslash($_POST['nonce']) : '';
-        if (!wp_verify_nonce($nonce, '410_response_manager_nonce')) {
-            wp_send_json_error(array(
-                'message' => esc_html__('Security check failed', '410-response-manager')
-            ));
-        }
+        check_ajax_referer('rathly_410_manager_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error(array(
@@ -548,15 +655,9 @@ class Response_410_Manager {
         $id = isset($_POST['id']) ? absint($_POST['id']) : 0;
         
         if ($id) {
-            global $wpdb;
-            $result = $wpdb->delete(
-                $wpdb->prefix . '410_urls',
-                array('id' => $id),
-                array('%d')
-            );
+            $result = $this->delete_url_pattern($id);
             
             if ($result) {
-                $this->clear_cache();
                 wp_send_json_success();
                 return;
             }
@@ -571,12 +672,7 @@ class Response_410_Manager {
      * Handle bulk actions.
      */
     public function handle_bulk_action() {
-        $nonce = isset($_POST['nonce']) ? wp_unslash($_POST['nonce']) : '';
-        if (!wp_verify_nonce($nonce, '410_response_manager_nonce')) {
-            wp_send_json_error(array(
-                'message' => esc_html__('Security check failed', '410-response-manager')
-            ));
-        }
+        check_ajax_referer('rathly_410_manager_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error(array(
@@ -590,7 +686,7 @@ class Response_410_Manager {
             $result = $this->handle_bulk_delete($ids);
             
             if ($result !== false) {
-                $this->clear_cache();
+                $this->clear_all_cache();
                 wp_send_json_success();
                 return;
             }
@@ -602,42 +698,87 @@ class Response_410_Manager {
     }
 
     /**
+     * Delete URL pattern.
+     *
+     * @param int $id Pattern ID to delete.
+     * @return bool
+     */
+    private function delete_url_pattern($id) {
+        global $wpdb;
+        $cache_key = 'rathly_delete_pattern_' . $id;
+        $result = wp_cache_get($cache_key, $this->cache_group);
+
+        if (false === $result) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write operation with caching
+            $result = $wpdb->delete(
+                $wpdb->prefix . 'rathly_410_urls',
+                array('id' => $id),
+                array('%d')
+            );
+            wp_cache_set($cache_key, $result, $this->cache_group, HOUR_IN_SECONDS);
+        }
+        
+        if ($result) {
+            $this->clear_all_cache();
+        }
+        
+        return (bool) $result;
+    }
+
+    /**
      * Handle bulk deletion.
      *
      * @param array $ids Array of IDs to delete.
      * @return bool|int
      */
     private function handle_bulk_delete($ids) {
+        if (empty($ids) || !is_array($ids)) {
+            return false;
+        }
+
         global $wpdb;
         
-        // Create placeholders
-        $placeholders = array_fill(0, count($ids), '%d');
-        $placeholder_string = implode(',', $placeholders);
+        // Create base query with proper table name
+        $table_name = $wpdb->prefix . 'rathly_410_urls';
         
-        // Execute delete query
-        return $wpdb->query(
-            $wpdb->prepare(
-                "DELETE FROM {$wpdb->prefix}410_urls WHERE id IN ($placeholder_string)",
-                $ids
-            )
-        );
+        // Create placeholders and prepare statement
+        $sql = "DELETE FROM `$table_name` WHERE id IN (";
+        $sql .= implode(',', array_fill(0, count($ids), '%d'));
+        $sql .= ')';
+
+        $cache_key = 'rathly_bulk_delete_' . md5(serialize($ids));
+        $result = wp_cache_get($cache_key, $this->cache_group);
+
+        if (false === $result) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write operation with caching
+            $result = $wpdb->query(
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query is prepared with placeholders
+                $wpdb->prepare($sql, ...$ids)
+            );
+            wp_cache_set($cache_key, $result, $this->cache_group, HOUR_IN_SECONDS);
+        }
+
+        if ($result) {
+            $this->clear_all_cache();
+        }
+
+        return $result;
     }
 
     /**
      * Clear all plugin caches.
      */
-    private function clear_cache() {
+    private function clear_all_cache() {
         $cache_keys = array(
-            '410_entries_list',
-            '410_exact_matches',
-            '410_regex_patterns'
+            'rathly_410_url_patterns',
+            'rathly_410_exact_matches',
+            'rathly_410_regex_patterns'
         );
         
         foreach ($cache_keys as $key) {
             wp_cache_delete($key, $this->cache_group);
         }
         
-        // Clear all path caches
         wp_cache_flush();
     }
 
@@ -650,7 +791,39 @@ class Response_410_Manager {
     private function is_valid_regex($pattern) {
         return @preg_match('#' . str_replace('#', '\#', $pattern) . '#', '') !== false;
     }
+
+    /**
+     * Send 410 response.
+     */
+    private function send_410_response() {
+        status_header(410);
+        header('X-Robots-Tag: noindex');
+        
+        global $wp_query;
+        $wp_query->set_404();
+        status_header(410);
+    }
+
+    /**
+     * Render admin page.
+     */
+    public function render_admin_page() {
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        // Process form submissions
+        if (isset($_SERVER['REQUEST_METHOD']) && 
+            'POST' === sanitize_text_field(wp_unslash($_SERVER['REQUEST_METHOD'])) && 
+            check_admin_referer('rathly_410_manager_action')
+        ) {
+            $this->handle_form_submission();
+        }
+        
+        $entries = $this->get_url_patterns();
+        require_once RATHLY_410_PATH . 'templates/admin-page.php';
+    }
 }
 
 // Initialize plugin
-Response_410_Manager::get_instance();
+RathlyResponse410Manager::get_instance();
