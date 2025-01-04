@@ -1,1 +1,29 @@
+# Copyright (C) 2024 Rathly
+# This file is distributed under the GPL v2 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: 410 Response Manager 1.0.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/410-response-manager\n"
+"Last-Translator: Rathly <support@rathly.com>\n"
+"Language-Team: Rathly <support@rathly.com>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2024-01-03T12:00:00+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.8.1\n"
+"X-Domain: 410-response-manager\n"
 
+#: 410-response-manager.php:115
+msgid "410 Response Manager"
+msgstr ""
+
+#: 410-response-manager.php:116
+msgid "410 Manager"
+msgstr ""
+
+# ... [Additional translation strings]
+
+#: 410-response-manager.php:498
+msgid "No URL patterns were imported"
+msgstr ""
